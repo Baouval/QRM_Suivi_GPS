@@ -6,7 +6,7 @@ import plotly.express as px
 st.set_page_config(page_title="QRM Dashboard Staff", layout="wide", page_icon="⚽")
 
 # --- Logo et titre latéral ---
-st.sidebar.image("assets/Logo QRM.png", use_column_width=True)
+st.sidebar.image("Logo QRM.png", use_column_width=True)
 st.sidebar.title("Tableau de bord QRM")
 st.sidebar.markdown("### Navigation")
 
