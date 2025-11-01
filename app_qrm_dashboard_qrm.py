@@ -178,36 +178,39 @@ if "Date" in df.columns:
 else:
     st.error("La colonne 'Date' est manquante."); st.stop()
 
-# Sidebar filters
+
+# Sidebar filters (ajout d'un sélecteur de période)
 with st.sidebar:
+    # filtre période
+    col_date = "Date"
+    if col_date in df.columns and df[col_date].notna().any():
+        dmin, dmax = df[col_date].min().date(), df[col_date].max().date()
+        start_date, end_date = st.date_input("Période", value=(dmin, dmax), min_value=dmin, max_value=dmax)
+        # filtrer inclusif sur la colonne Date (datetime)
+        df = df[(df[col_date].dt.date >= pd.to_datetime(start_date).date()) & (df[col_date].dt.date <= pd.to_datetime(end_date).date())]
+
     joueurs = sorted(df["Joueur"].dropna().unique().tolist())
     joueur = st.selectbox("👤 Joueur", joueurs, index=0)
-    vue = st.radio("📅 Vue", ["Journalier", "Hebdomadaire"], horizontal=True)
 
-# Filter by player
-pdf = df[df["Joueur"]==joueur].copy()
+# Filtrer par joueur
+pdf = df[df["Joueur"] == joueur].copy()
 if pdf.empty:
-    st.warning("Aucune donnée pour ce joueur."); st.stop()
+    st.warning("Aucune donnée pour ce joueur.")
+    st.stop()
 
-# Build time selectors
-if vue == "Journalier":
-    dates = pdf["Date"].dropna().dt.date.unique()
-    dates = sorted(dates)
-    date_sel = st.sidebar.selectbox("Jour", dates, index=len(dates)-1 if dates else 0)
-    fdf = pdf[pdf["Date"].dt.date == date_sel].copy()
-else:
-    iso = pdf["Date"].dt.isocalendar()
-    pdf["ISO_Year"] = iso["year"]
-    pdf["ISO_Week"] = iso["week"]
-    pdf["YearWeek"] = pdf["ISO_Year"].astype(str) + "-W" + pdf["ISO_Week"].astype(str).str.zfill(2)
-    weeks = sorted(pdf["YearWeek"].unique().tolist())
-    week_sel = st.sidebar.selectbox("Semaine (ISO)", weeks, index=len(weeks)-1 if weeks else 0)
-    ysel, wsel = week_sel.split("-W")
-    ysel, wsel = int(ysel), int(wsel)
-    fdf = pdf[(pdf["ISO_Year"]==ysel) & (pdf["ISO_Week"]==wsel)].copy()
+# Appliquer le filtre de période (défini dans la sidebar) — sécurité et conversion date
+if 'start_date' in locals() and 'end_date' in locals():
+    sd = pd.to_datetime(start_date).date()
+    ed = pd.to_datetime(end_date).date()
+    if ed < sd:
+        sd, ed = ed, sd
+    pdf = pdf[(pdf["Date"].dt.date >= sd) & (pdf["Date"].dt.date <= ed)]
 
+# fdf = données finales filtrées (identique à pdf ici)
+fdf = pdf.copy()
 if fdf.empty:
-    st.warning("Aucune donnée pour cette sélection."); st.stop()
+    st.warning("Aucune donnée pour cette sélection.")
+    st.stop()
 
 # Aggregation rules
 sum_cols = ["Distance_Totale","Zone4_Dist","Zone5_Dist","Sprints","Accels","Decels"]
@@ -250,7 +253,7 @@ c4, c5 = st.columns([1.2,1])
 with c4:
     fig = go.Figure()
     # x-axis depends on view
-    if vue == "Journalier":
+    if sd == "Journalier":
         x = fdf["Date"]
     else:
         x = fdf["Date"]  # keep daily points within selected week
@@ -274,6 +277,64 @@ with c5:
     st.plotly_chart(fig, use_container_width=True)
 
 st.divider()
+
+# === Nouveau graphique détaillé : Distance Totale / HID / HSR (jour par jour) ===
+# affiché en pleine largeur sous Row 2
+def detailed_distance_chart(df_days):
+    x = pd.to_datetime(df_days["Date"])
+    fig = go.Figure()
+
+    # Barres : Distance Totale / HID / HSR
+    if "Distance_Totale" in df_days.columns:
+        fig.add_trace(go.Bar(
+            x=x,
+            y=df_days["Distance_Totale"].fillna(0),
+            name="Distance Totale (m)",
+            marker_color=QRM_GOLD
+        ))
+
+    if "Zone4_Dist" in df_days.columns:
+        fig.add_trace(go.Bar(
+            x=x,
+            y=df_days["Zone4_Dist"].fillna(0),
+            name="HID - Zone 4 (m)",
+            marker_color=QRM_RED
+        ))
+
+    if "Zone5_Dist" in df_days.columns:
+        fig.add_trace(go.Bar(
+            x=x,
+            y=df_days["Zone5_Dist"].fillna(0),
+            name="HSR - Zone 5 (m)",
+            marker_color=PRIMARY_BLUE
+        ))
+
+    # Mise en forme
+    fig.update_layout(
+        title="Distance Totale, HID et HSR (jour par jour)",
+        barmode="group",  # groupé (barres côte à côte)
+        xaxis=dict(title="Date"),
+        yaxis=dict(title="Distance (m)", showgrid=False),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=10, r=60, t=40, b=40),
+        height=420,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
+
+    return fig
+
+# Affichage du graphique
+st.plotly_chart(detailed_distance_chart(fdf.sort_values("Date")), use_container_width=True)
+
+st.divider()
+
 
 # Row 3: Wellness & RPE
 c6, c7 = st.columns([1.4,0.8])
